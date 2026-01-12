@@ -1,21 +1,26 @@
 # Las Nubes 🌥️
 
-Progressive Web App for farm automation control. This MVP controls a gate via MQTT protocol.
+Progressive Web App for farm automation control with Hive blockchain integration. Controls a gate via MQTT protocol with immutable activity logging on the Hive blockchain.
 
 ## Features
 
 - 🚪 Remote gate control via MQTT
+- 🔐 Hive blockchain authentication (whitelisted users only)
+- 📝 Immutable activity logging on Hive blockchain
 - 📱 Progressive Web App (installable on mobile/desktop)
 - 🎨 Modern, responsive UI
 - 🔄 Real-time feedback
 - ⚙️ Configurable backend and frontend ports
 - 🌐 Works on any device with a browser
+- 📊 Retrievable event history from blockchain
 
 ## Prerequisites
 
 - Node.js (v14 or higher)
 - npm or yarn
 - MQTT broker (configured in .env)
+- Hive blockchain account with posting key
+- `authorized-users.json` file with whitelisted Hive usernames
 
 ## Installation
 
@@ -42,15 +47,29 @@ cd ..
 cp .env.example .env
 ```
 
-5. Edit `.env` with your MQTT broker credentials and port configuration:
+5. Edit `.env` with your MQTT broker credentials, port configuration, and Hive credentials:
 ```env
 PORT=6000
 CLIENT_PORT=3000
-MQTT_BROKER=147.135.113.77
+MQTT_BROKER=your.mqtt.broker.com
 MQTT_PORT=1883
 MQTT_USERNAME=your_username
 MQTT_PASSWORD=your_password
 MQTT_TOPIC_DOOR=home/door/cmd
+HIVE_USERNAME=your_hive_username
+HIVE_POSTING_KEY=your_hive_posting_key
+JWT_SECRET=your_secret_key_here
+```
+
+6. Create `authorized-users.json` with whitelisted Hive usernames:
+```json
+{
+  "authorizedUsers": [
+    "username1",
+    "username2",
+    "username3"
+  ]
+}
 ```
 
 **Note**: Both backend and frontend ports are configurable. If port 3000 is already in use on your server, change `CLIENT_PORT` to any available port (e.g., 3001, 8080, etc.).
@@ -187,11 +206,56 @@ pm2 startup
 - `MQTT_USERNAME` - MQTT username
 - `MQTT_PASSWORD` - MQTT password
 - `MQTT_TOPIC_DOOR` - MQTT topic for door control
+- `HIVE_USERNAME` - Hive blockchain account username for posting events
+- `HIVE_POSTING_KEY` - Hive posting key for blockchain transactions
+- `JWT_SECRET` - Secret key for JWT token generation
 
 ## API Endpoints
 
-### POST /api/door/open
-Opens the gate by sending "ON" command to MQTT topic.
+### Authentication
+
+#### POST /api/auth/login
+Authenticate a user with Hive credentials.
+
+Request:
+```json
+{
+  "username": "hiveusername",
+  "postingKey": "5K..."
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "token": "jwt_token_here",
+  "username": "hiveusername",
+  "message": "Login successful"
+}
+```
+
+#### POST /api/auth/verify
+Verify and refresh JWT token. Requires valid token in Authorization header.
+
+Response:
+```json
+{
+  "success": true,
+  "token": "refreshed_jwt_token",
+  "username": "hiveusername"
+}
+```
+
+### Door Control
+
+#### POST /api/door/open
+Opens the gate by sending "ON" command to MQTT topic. Requires authentication. Logs event to Hive blockchain.
+
+Headers:
+```
+Authorization: Bearer <jwt_token>
+```
 
 Response:
 ```json
@@ -199,11 +263,47 @@ Response:
   "success": true,
   "message": "Gate command sent successfully",
   "topic": "home/door/cmd",
-  "command": "ON"
+  "command": "ON",
+  "hive": {
+    "success": true,
+    "transactionId": "abc123...",
+    "blockNum": 123456,
+    "payload": {
+      "action": "door_activated",
+      "user": "hiveusername",
+      "timestamp": "2026-01-11T...",
+      "message": "Gate Door Activated by @hiveusername"
+    }
+  }
 }
 ```
 
-### GET /api/health
+#### GET /api/door/logs
+Retrieve door activation history from Hive blockchain.
+
+Query Parameters:
+- `limit` (optional): Maximum number of events to fetch (default: 50)
+
+Response:
+```json
+{
+  "success": true,
+  "logs": [
+    {
+      "action": "door_activated",
+      "user": "hiveusername",
+      "timestamp": "2026-01-11T...",
+      "message": "Gate Door Activated by @hiveusername",
+      "block_num": 123456
+    }
+  ],
+  "count": 10
+}
+```
+
+### System
+
+#### GET /api/health
 Health check endpoint.
 
 Response:
@@ -211,23 +311,51 @@ Response:
 {
   "status": "ok",
   "mqtt": "connected",
-  "timestamp": "2026-01-09T..."
+  "timestamp": "2026-01-11T..."
+}
+```
+
+## Hive Blockchain Integration
+
+Las Nubes uses the Hive blockchain for:
+
+1. **Authentication**: Users log in with their Hive username and posting key. Only whitelisted users in `authorized-users.json` can access the system.
+
+2. **Immutable Logging**: Every gate activation is recorded as a custom JSON operation on the Hive blockchain (`lasnubes_door_event`), providing:
+   - Permanent, tamper-proof audit trail
+   - Timestamp verification
+   - User attribution
+   - Public transparency
+
+3. **Event Retrieval**: Historical door activations can be queried from the blockchain, providing complete activity history even if the local server is reset.
+
+### Custom JSON Format
+
+Events are stored on Hive using this format:
+```json
+{
+  "action": "door_activated",
+  "user": "hiveusername",
+  "timestamp": "2026-01-11T12:34:56.789Z",
+  "message": "Gate Door Activated by @hiveusername"
 }
 ```
 
 ## Future Features
 
-- 🔐 Hive Blockchain authentication
-- 📹 Video streaming integration
+- � Video streaming integration
 - 🏠 Additional home automation controls
-- 📊 Activity logging and monitoring
+- 📊 Enhanced activity monitoring and analytics
 - 🔔 Push notifications
+- 📈 Hive blockchain activity dashboard
 
 ## Tech Stack
 
-- **Backend**: Node.js, Express, MQTT
+- **Backend**: Node.js, Express, MQTT, JWT Authentication
 - **Frontend**: React, PWA
+- **Blockchain**: Hive (@hiveio/dhive)
 - **Communication**: REST API, MQTT Protocol
+- **Authentication**: JWT with Hive posting key validation
 
 ## License
 
